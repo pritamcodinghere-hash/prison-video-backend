@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  fullName     String
+  email        String        @unique
+  password     String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  role         UserRole      @default(VISITOR)
+  alerts       Alert[]
+  auditLogs    AuditLog[]
+  familyMember FamilyMember?
+}
+
+model Prison {
+  id        Int          @id @default(autoincrement())
+  name      String
+  code      String       @unique
+  address   String
+  status    PrisonStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  devices   Device[]
+  inmates   Inmate[]
+}
+
+model Inmate {
+  id                 Int                @id @default(autoincrement())
+  inmateNumber       String             @unique
+  fullName           String
+  prisonId           Int
+  status             InmateStatus       @default(ACTIVE)
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  calls              Call[]
+  callSchedules      CallSchedule[]
+  familyMembers      FamilyMember[]
+  prison             Prison             @relation(fields: [prisonId], references: [id])
+}
+
+model FamilyMember {
+  id                 Int                @id @default(autoincrement())
+  userId             Int                @unique
+  inmateId           Int
+  relationship       String
+  phone              String
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  calls              Call[]
+  callSchedules      CallSchedule[]
+  inmate             Inmate             @relation(fields: [inmateId], references: [id])
+  user               User               @relation(fields: [userId], references: [id])
+}
+
+model CallSchedule {
+  id             Int            @id @default(autoincrement())
+  inmateId       Int
+  familyMemberId Int
+  scheduledAt    DateTime
+  duration       Int
+  status         ScheduleStatus @default(SCHEDULED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  call           Call?
+  familyMember   FamilyMember   @relation(fields: [familyMemberId], references: [id])
+  inmate         Inmate         @relation(fields: [inmateId], references: [id])
+}
+
+model Call {
+  id             Int           @id @default(autoincrement())
+  scheduleId     Int?          @unique
+  inmateId       Int
+  familyMemberId Int
+  startedAt      DateTime?
+  endedAt        DateTime?
+  duration       Int?
+  status         CallStatus    @default(WAITING)
+  roomId         String?       @unique
+  createdAt      DateTime      @default(now())
+  billing        Billing?
+  familyMember   FamilyMember  @relation(fields: [familyMemberId], references: [id])
+  inmate         Inmate        @relation(fields: [inmateId], references: [id])
+  schedule       CallSchedule? @relation(fields: [scheduleId], references: [id])
+  recording      Recording?
+}
+
+model Billing {
+  id             Int           @id @default(autoincrement())
+  callId         Int           @unique
+  amount         Decimal       @db.Decimal(10, 2)
+  pricePerMinute Decimal       @db.Decimal(10, 2)
+  duration       Int
+  status         BillingStatus @default(PENDING)
+  transactionId  String?
+  createdAt      DateTime      @default(now())
+  call           Call          @relation(fields: [callId], references: [id])
+}
+
+model Recording {
+  id          Int             @id @default(autoincrement())
+  callId      Int             @unique
+  fileName    String
+  storagePath String
+  duration    Int?
+  status      RecordingStatus @default(PROCESSING)
+  createdAt   DateTime        @default(now())
+  call        Call            @relation(fields: [callId], references: [id])
+}
+
+model Device {
+  id           Int          @id @default(autoincrement())
+  deviceCode   String       @unique
+  name         String
+  prisonId     Int
+  status       DeviceStatus @default(ACTIVE)
+  lastActiveAt DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  prison       Prison       @relation(fields: [prisonId], references: [id])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  entity    String
+  entityId  Int?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Alert {
+  id         Int           @id @default(autoincrement())
+  type       String
+  message    String
+  severity   AlertSeverity @default(MEDIUM)
+  status     AlertStatus   @default(OPEN)
+  userId     Int?
+  createdAt  DateTime      @default(now())
+  resolvedAt DateTime?
+  user       User?         @relation(fields: [userId], references: [id])
+}
+
+enum UserRole {
+  VISITOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum PrisonStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InmateStatus {
+  ACTIVE
+  INACTIVE
+  RELEASED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ScheduleStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum CallStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+enum BillingStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum RecordingStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum DeviceStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  RESOLVED
+}
