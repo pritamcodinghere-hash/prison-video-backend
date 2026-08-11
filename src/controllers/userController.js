@@ -12,7 +12,8 @@ const registerUser = async (req, res) => {
                 message: "All fields are required"
             });
         }
-
+const test = await prisma.$queryRaw`SELECT 1`;
+console.log("PRISMA TEST:", test);
         // Check existing user
         const existingUser = await prisma.user.findUnique({
             where: {

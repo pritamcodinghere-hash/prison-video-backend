@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -53,10 +54,17 @@ model FamilyMember {
   relationship       String
   phone              String
   verificationStatus VerificationStatus @default(PENDING)
+
+  // OTP verification
+  otpCode            String?
+  otpExpiresAt       DateTime?
+
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+
   calls              Call[]
   callSchedules      CallSchedule[]
+
   inmate             Inmate             @relation(fields: [inmateId], references: [id])
   user               User               @relation(fields: [userId], references: [id])
 }
