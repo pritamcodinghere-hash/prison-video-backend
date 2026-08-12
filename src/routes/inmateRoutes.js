@@ -1,8 +1,13 @@
 const express = require("express");
-const { createInmate } = require("../controllers/inmateController");
+
+const {
+    createInmate,
+    getInmates
+} = require("../controllers/inmateController");
 
 const router = express.Router();
 
 router.post("/", createInmate);
+router.get("/", getInmates);
 
 module.exports = router;

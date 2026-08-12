@@ -49,6 +49,36 @@ const createInmate = async (req, res) => {
     }
 };
 
+
+// GET ALL INMATES
+const getInmates = async (req, res) => {
+    try {
+        const inmates = await prisma.inmate.findMany({
+            include: {
+                prison: true
+            },
+            orderBy: {
+                id: "asc"
+            }
+        });
+
+        return res.status(200).json({
+            message: "Inmates fetched successfully",
+            inmates
+        });
+
+    } catch (error) {
+        console.error("GET INMATES ERROR:", error);
+
+        return res.status(500).json({
+            message: "Server error",
+            error: error.message
+        });
+    }
+};
+
+
 module.exports = {
-    createInmate
+    createInmate,
+    getInmates
 };
