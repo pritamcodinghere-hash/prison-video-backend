@@ -1,10 +1,12 @@
 {
   "name": "prison-video-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Prison Video Calling Backend",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "npx prisma db push && node server.js",
+    "build": "npx prisma generate",
+    "test": "echo \"No tests specified\""
   },
   "keywords": [],
   "author": "",
