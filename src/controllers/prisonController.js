@@ -3,7 +3,8 @@ const prisma = require("../config/prisma");
 const createPrison = async (req, res) => {
     try {
         console.log("PRISON API HIT");
-console.log("BODY:", req.body);
+        console.log("BODY:", req.body);
+
         const { name, code, address } = req.body;
 
         if (!name || !code || !address) {
@@ -45,6 +46,33 @@ console.log("BODY:", req.body);
     }
 };
 
+
+// GET ALL PRISONS
+const getPrisons = async (req, res) => {
+    try {
+        const prisons = await prisma.prison.findMany({
+            orderBy: {
+                id: "asc"
+            }
+        });
+
+        return res.status(200).json({
+            message: "Prisons fetched successfully",
+            prisons
+        });
+
+    } catch (error) {
+        console.error("GET PRISONS ERROR:", error);
+
+        return res.status(500).json({
+            message: "Server error",
+            error: error.message
+        });
+    }
+};
+
+
 module.exports = {
-    createPrison
+    createPrison,
+    getPrisons
 };
