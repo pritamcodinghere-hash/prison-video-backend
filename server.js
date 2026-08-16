@@ -7,7 +7,7 @@ const { Server } = require("socket.io");
 const prisma = require("./src/config/prisma");
 
 const app = express();
-const server = http.createServer(app);
+const server = http.createServer(app); 
 
 // ==========================================
 // SOCKET.IO

@@ -1,5 +1,11 @@
+
 const crypto = require("crypto");
 const prisma = require("../config/prisma");
+
+const {
+    createMediaRoom,
+    closeMediaRoom
+} = require("../services/mediaServerClient");
 
 // ==========================================
 // CREATE CALL FROM SCHEDULE
@@ -33,7 +39,6 @@ const createCall = async (req, res) => {
             });
         }
 
-        // Check if a call already exists for this schedule
         const existingCall = await prisma.call.findUnique({
             where: {
                 scheduleId: Number(scheduleId)
@@ -47,9 +52,11 @@ const createCall = async (req, res) => {
             });
         }
 
-        // Generate unique room ID
-        const roomId = `room_${crypto.randomBytes(8).toString("hex")}`;
+        // Generate unique media room ID
+        const roomId =
+            `room_${crypto.randomBytes(8).toString("hex")}`;
 
+        // Create call in database first
         const call = await prisma.call.create({
             data: {
                 scheduleId: Number(scheduleId),
@@ -60,13 +67,50 @@ const createCall = async (req, res) => {
             }
         });
 
+        // Create corresponding room on Media Server
+        try {
+
+            const mediaRoom =
+                await createMediaRoom(roomId);
+
+            console.log(
+                "Media room created:",
+                mediaRoom.roomId
+            );
+
+        } catch (mediaError) {
+
+            console.error(
+                "MEDIA ROOM CREATION ERROR:",
+                mediaError
+            );
+
+            // Roll back database call if media room
+            // could not be created
+            await prisma.call.delete({
+                where: {
+                    id: call.id
+                }
+            });
+
+            return res.status(503).json({
+                message:
+                    "Media Server unavailable. Call was not created.",
+                error: mediaError.message
+            });
+        }
+
         return res.status(201).json({
-            message: "Call created successfully",
+            message: "Call and media room created successfully",
             call
         });
 
     } catch (error) {
-        console.error("CREATE CALL ERROR:", error);
+
+        console.error(
+            "CREATE CALL ERROR:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server error",
@@ -82,6 +126,7 @@ const createCall = async (req, res) => {
 
 const getCallById = async (req, res) => {
     try {
+
         const callId = Number(req.params.id);
 
         const call = await prisma.call.findUnique({
@@ -117,7 +162,11 @@ const getCallById = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("GET CALL ERROR:", error);
+
+        console.error(
+            "GET CALL ERROR:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server error",
@@ -133,6 +182,7 @@ const getCallById = async (req, res) => {
 
 const startCall = async (req, res) => {
     try {
+
         const callId = Number(req.params.id);
 
         const call = await prisma.call.findUnique({
@@ -149,7 +199,15 @@ const startCall = async (req, res) => {
 
         if (call.status !== "WAITING") {
             return res.status(400).json({
-                message: "Call cannot be started in its current state"
+                message:
+                    "Call cannot be started in its current state"
+            });
+        }
+
+        if (!call.roomId) {
+            return res.status(400).json({
+                message:
+                    "Call does not have a media room"
             });
         }
 
@@ -169,7 +227,11 @@ const startCall = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("START CALL ERROR:", error);
+
+        console.error(
+            "START CALL ERROR:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server error",
@@ -185,6 +247,7 @@ const startCall = async (req, res) => {
 
 const endCall = async (req, res) => {
     try {
+
         const callId = Number(req.params.id);
 
         const call = await prisma.call.findUnique({
@@ -201,7 +264,8 @@ const endCall = async (req, res) => {
 
         if (call.status !== "ACTIVE") {
             return res.status(400).json({
-                message: "Only active calls can be ended"
+                message:
+                    "Only active calls can be ended"
             });
         }
 
@@ -210,10 +274,14 @@ const endCall = async (req, res) => {
         let duration = 0;
 
         if (call.startedAt) {
+
             duration = Math.max(
                 1,
                 Math.floor(
-                    (endedAt.getTime() - call.startedAt.getTime()) / 1000
+                    (
+                        endedAt.getTime() -
+                        call.startedAt.getTime()
+                    ) / 1000
                 )
             );
         }
@@ -229,8 +297,9 @@ const endCall = async (req, res) => {
             }
         });
 
-        // Also mark schedule as completed
+        // Mark schedule completed
         if (call.scheduleId) {
+
             await prisma.callSchedule.update({
                 where: {
                     id: call.scheduleId
@@ -241,13 +310,42 @@ const endCall = async (req, res) => {
             });
         }
 
+        // Close corresponding media room
+        if (call.roomId) {
+
+            try {
+
+                await closeMediaRoom(call.roomId);
+
+                console.log(
+                    "Media room closed:",
+                    call.roomId
+                );
+
+            } catch (mediaError) {
+
+                console.error(
+                    "MEDIA ROOM CLOSE ERROR:",
+                    mediaError
+                );
+
+                // The call is already completed in DB,
+                // so don't fail the API response.
+            }
+        }
+
         return res.status(200).json({
-            message: "Call ended successfully",
+            message:
+                "Call ended successfully",
             call: updatedCall
         });
 
     } catch (error) {
-        console.error("END CALL ERROR:", error);
+
+        console.error(
+            "END CALL ERROR:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server error",
@@ -263,7 +361,9 @@ const endCall = async (req, res) => {
 
 const getInmateCalls = async (req, res) => {
     try {
-        const inmateId = Number(req.params.inmateId);
+
+        const inmateId =
+            Number(req.params.inmateId);
 
         const calls = await prisma.call.findMany({
             where: {
@@ -289,12 +389,17 @@ const getInmateCalls = async (req, res) => {
         });
 
         return res.status(200).json({
-            message: "Inmate calls fetched successfully",
+            message:
+                "Inmate calls fetched successfully",
             calls
         });
 
     } catch (error) {
-        console.error("GET INMATE CALLS ERROR:", error);
+
+        console.error(
+            "GET INMATE CALLS ERROR:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server error",
@@ -310,7 +415,9 @@ const getInmateCalls = async (req, res) => {
 
 const getFamilyCalls = async (req, res) => {
     try {
-        const familyMemberId = Number(req.params.familyMemberId);
+
+        const familyMemberId =
+            Number(req.params.familyMemberId);
 
         const calls = await prisma.call.findMany({
             where: {
@@ -326,12 +433,17 @@ const getFamilyCalls = async (req, res) => {
         });
 
         return res.status(200).json({
-            message: "Family calls fetched successfully",
+            message:
+                "Family calls fetched successfully",
             calls
         });
 
     } catch (error) {
-        console.error("GET FAMILY CALLS ERROR:", error);
+
+        console.error(
+            "GET FAMILY CALLS ERROR:",
+            error
+        );
 
         return res.status(500).json({
             message: "Server error",
