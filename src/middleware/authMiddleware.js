@@ -1,6 +1,4 @@
-const jwt = require("jsonwebtoken");
-
-const JWT_SECRET = process.env.JWT_SECRET || "prison_video_calling_secret_2026";
+const { verifyToken } = require("../utils/jwt");
 
 const authenticateToken = (req, res, next) => {
     try {
@@ -20,7 +18,7 @@ const authenticateToken = (req, res, next) => {
             });
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = verifyToken(token);
 
         req.user = decoded;
 
@@ -32,6 +30,7 @@ const authenticateToken = (req, res, next) => {
         });
     }
 };
+
 const requireRole = (...allowedRoles) => {
     return (req, res, next) => {
 

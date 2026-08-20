@@ -8,16 +8,19 @@ datasource db {
 }
 
 model User {
-  id           Int           @id @default(autoincrement())
+  id           Int              @id @default(autoincrement())
   fullName     String
-  email        String        @unique
+  email        String           @unique
   password     String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  role         UserRole      @default(VISITOR)
+  phone        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  role         UserRole         @default(VISITOR)
+  status       UserStatus       @default(ACTIVE)
   alerts       Alert[]
   auditLogs    AuditLog[]
   familyMember FamilyMember?
+  wallet       Wallet?
 }
 
 model Prison {
@@ -30,12 +33,14 @@ model Prison {
   updatedAt DateTime     @updatedAt
   devices   Device[]
   inmates   Inmate[]
+  kiosks    Kiosk[]
 }
 
 model Inmate {
   id                 Int                @id @default(autoincrement())
   inmateNumber       String             @unique
   fullName           String
+  photoUrl           String?
   prisonId           Int
   status             InmateStatus       @default(ACTIVE)
   verificationStatus VerificationStatus @default(PENDING)
@@ -44,6 +49,7 @@ model Inmate {
   calls              Call[]
   callSchedules      CallSchedule[]
   familyMembers      FamilyMember[]
+  incidents          Incident[]
   prison             Prison             @relation(fields: [prisonId], references: [id])
 }
 
@@ -53,6 +59,7 @@ model FamilyMember {
   inmateId           Int
   relationship       String
   phone              String
+  isBlocked          Boolean            @default(false)
   verificationStatus VerificationStatus @default(PENDING)
 
   // OTP verification
@@ -64,6 +71,7 @@ model FamilyMember {
 
   calls              Call[]
   callSchedules      CallSchedule[]
+  devices            DeviceRegistration[]
 
   inmate             Inmate             @relation(fields: [inmateId], references: [id])
   user               User               @relation(fields: [userId], references: [id])
@@ -159,10 +167,89 @@ model Alert {
   user       User?         @relation(fields: [userId], references: [id])
 }
 
+model DeviceRegistration {
+  id                Int          @id @default(autoincrement())
+  familyMemberId    Int
+  deviceFingerprint String
+  deviceName        String?
+  isTrusted         Boolean      @default(true)
+  lastUsedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  familyMember      FamilyMember @relation(fields: [familyMemberId], references: [id])
+
+  @@unique([familyMemberId, deviceFingerprint])
+}
+
+model Wallet {
+  id        Int           @id @default(autoincrement())
+  userId    Int           @unique
+  balance   Decimal       @db.Decimal(12, 2) @default(0)
+  currency  String        @default("INR")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+model Transaction {
+  id        Int      @id @default(autoincrement())
+  walletId  Int
+  amount    Decimal  @db.Decimal(12, 2)
+  type      String
+  callId    Int?
+  createdAt DateTime @default(now())
+  wallet    Wallet   @relation(fields: [walletId], references: [id])
+}
+
+model Kiosk {
+  id            Int          @id @default(autoincrement())
+  serialNumber  String       @unique
+  prisonId      Int
+  name          String?
+  status        KioskStatus  @default(PENDING)
+  lastHeartbeat DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  prison        Prison       @relation(fields: [prisonId], references: [id])
+}
+
+model Incident {
+  id          Int      @id @default(autoincrement())
+  inmateId    Int?
+  callId      Int?
+  type        String
+  severity    String
+  description String
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  inmate      Inmate?  @relation(fields: [inmateId], references: [id])
+}
+
+model Settings {
+  id   Int  @id @default(1)
+  data Json @default("{}")
+}
+
 enum UserRole {
   VISITOR
+  WARDEN
+  VENDOR
+  KIOSK
   ADMIN
   SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum KioskStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  OFFLINE
 }
 
 enum PrisonStatus {

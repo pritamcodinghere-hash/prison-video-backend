@@ -3,10 +3,55 @@ require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const prisma = require("./src/config/prisma");
 
 const app = express();
 const server = http.createServer(app);
+
+// ==========================================
+// CORS ALLOWLIST
+// ==========================================
+const ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3001",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    process.env.PRODUCTION_ORIGIN
+].filter(Boolean);
+
+app.use(cors({
+    origin: ALLOWED_ORIGINS,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// ==========================================
+// SECURITY MIDDLEWARE
+// ==========================================
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// ==========================================
+// RATE LIMITING
+// ==========================================
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    message: { message: "Too many attempts, please try again later" },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const otpLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 5,
+    message: { message: "Too many OTP requests, please try again later" },
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 // Map to track active per-minute billing tickers
 const activeBillingTimers = new Map();
@@ -171,6 +216,42 @@ io.on("connection", (socket) => {
     });
 
     // ==========================================
+    // CALL CONTROL (Warden mute/disconnect)
+    // ==========================================
+    socket.on("call-control", async (data) => {
+        try {
+            const { roomId, action, userId, targetUserId } = data;
+            if (!roomId || !action) {
+                socket.emit("call-error", { message: "roomId and action required" });
+                return;
+            }
+
+            if (!["mute", "unmute", "disconnect"].includes(action)) {
+                socket.emit("call-error", { message: "Invalid action" });
+                return;
+            }
+
+            io.to(roomId).emit("call-control", {
+                action,
+                userId,
+                targetUserId
+            });
+
+            if (action === "disconnect") {
+                io.to(roomId).emit("call-ended", {
+                    roomId,
+                    reason: "ADMIN_DISCONNECTED"
+                });
+                io.in(roomId).socketsLeave(roomId);
+            }
+
+        } catch (error) {
+            console.error("CALL CONTROL ERROR:", error);
+            socket.emit("call-error", { message: "Unable to execute call control" });
+        }
+    });
+
+    // ==========================================
     // END CALL (Clean Single Event Handler)
     // ==========================================
     socket.on("end-call", async (data) => {
@@ -237,20 +318,44 @@ const scheduleRoutes = require("./src/routes/scheduleRoutes");
 const callRoutes = require("./src/routes/callRoutes");
 const billingRoutes = require("./src/routes/billingRoutes");
 const recordingRoutes = require("./src/routes/recordingRoutes");
+const walletRoutes = require("./src/routes/walletRoutes");
+const kioskRoutes = require("./src/routes/kioskRoutes");
+const alertRoutes = require("./src/routes/alertRoutes");
+const deviceRoutes = require("./src/routes/deviceRoutes");
+const reportRoutes = require("./src/routes/reportRoutes");
+const incidentRoutes = require("./src/routes/incidentRoutes");
+const dashboardRoutes = require("./src/routes/dashboardRoutes");
+const settingsRoutes = require("./src/routes/settingsRoutes");
 
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/forgot-password", otpLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/prisons", prisonRoutes);
 app.use("/api/inmates", inmateRoutes);
+app.use("/api/family/send-otp", otpLimiter);
+app.use("/api/family/verify-otp", otpLimiter);
 app.use("/api/family", familyRoutes);
 app.use("/api/schedules", scheduleRoutes);
 app.use("/api/calls", callRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/recordings", recordingRoutes);
+app.use("/api/wallet", walletRoutes);
+app.use("/api/kiosks", kioskRoutes);
+app.use("/api/alerts", alertRoutes);
+app.use("/api/devices", deviceRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/incidents", incidentRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/settings", settingsRoutes);
 
 app.get("/", (req, res) => {
     res.json({ message: "Prison Video Calling Backend is running" });
+});
+
+app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 5000;

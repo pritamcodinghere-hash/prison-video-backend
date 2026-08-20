@@ -1,24 +1,31 @@
 const bcrypt = require("bcrypt");
 const prisma = require("../config/prisma");
 
+const VALID_ROLES = ["VISITOR", "WARDEN", "VENDOR", "KIOSK"];
+const ADMIN_ROLES = ["WARDEN", "VENDOR", "KIOSK"];
+
 const registerUser = async (req, res) => {
     try {
-        console.log("REGISTER BODY:", req.body);
-
-        const { fullName, email, password } = req.body;
+        const { fullName, email, password, role } = req.body;
 
         if (!fullName || !email || !password) {
             return res.status(400).json({
                 message: "All fields are required"
             });
         }
-const test = await prisma.$queryRaw`SELECT 1`;
-console.log("PRISMA TEST:", test);
-        // Check existing user
-        const existingUser = await prisma.user.findUnique({
-            where: {
-                email: email
+
+        const userRole = role && VALID_ROLES.includes(role) ? role : "VISITOR";
+
+        if (ADMIN_ROLES.includes(userRole)) {
+            if (!req.user || !["ADMIN", "SUPER_ADMIN", "WARDEN"].includes(req.user.role)) {
+                return res.status(403).json({
+                    message: "Only admins can register warden/vendor/kiosk users"
+                });
             }
+        }
+
+        const existingUser = await prisma.user.findUnique({
+            where: { email }
         });
 
         if (existingUser) {
@@ -27,19 +34,16 @@ console.log("PRISMA TEST:", test);
             });
         }
 
-        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Create user
         const user = await prisma.user.create({
             data: {
-                fullName: fullName,
-                email: email,
-                password: hashedPassword
+                fullName,
+                email,
+                password: hashedPassword,
+                role: userRole
             }
         });
-
-        console.log("USER CREATED:", user.id);
 
         return res.status(201).json({
             message: "User registered successfully",
@@ -52,9 +56,7 @@ console.log("PRISMA TEST:", test);
         });
 
     } catch (error) {
-        console.error("========== REGISTER ERROR ==========");
-        console.error(error);
-
+        console.error("REGISTER ERROR:", error);
         return res.status(500).json({
             message: "Server error",
             error: error.message
